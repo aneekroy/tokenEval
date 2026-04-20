@@ -1,0 +1,11 @@
+torch>=2.1
+transformers>=4.44
+datasets>=2.18
+scipy>=1.11
+numpy>=1.24
+pyyaml>=6.0
+nltk>=3.8               # for English dictionary in Text8 validator (optional)
+# Optional but recommended:
+# wandb>=0.16
+# sentencepiece>=0.1.99  # for Llama-2, Gemma tokenizers
+# tiktoken>=0.6          # for GPT-2 fast path (sometimes)

@@ -1,0 +1,131 @@
+# Default config for diffusion_tokenizer_bench.
+# Values are sized for a single A100/H100 on LCS2's sentinel/megatron servers.
+# Scale down n_sequences / n_docs for faster iteration.
+
+out_dir: /home/aneek/diffusion_tokenizer_bench_out
+# hf_token: "hf_xxx"         # required if using gated repos (Llama-2, Gemma)
+
+data:
+  hf_cache: /home/aneek/.cache/huggingface
+  owt:
+    enabled: true
+    n_docs: 5000
+  text8:
+    enabled: true
+    n_docs: 2000
+    path: null                # optional local path; null = pull from HF
+  hindi:
+    enabled: false            # flip to true for Sangraha Hindi fertility
+    n_docs: 3000
+
+# -----------------------------------------------------------------
+# Fertility subcommand
+# -----------------------------------------------------------------
+fertility:
+  tokenizers:
+    - byt5
+    - llama2
+    - gpt2
+    - qwen25
+    - gemma3
+
+# -----------------------------------------------------------------
+# Corruption subcommand (ρ(σ) and r(σ) sweep; CANDI Fig. 3 reproduction)
+# -----------------------------------------------------------------
+corruption:
+  # Geometric sweep over σ; ρ and r are interesting for σ in roughly [0.1, 10]
+  sigmas: [0.1, 0.2, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0]
+  # Span character-level through Gemma-scale
+  vocab_sizes: [5, 50, 256, 500, 5000, 32000, 50257, 151936, 262144]
+  n_samples: 20000
+
+# -----------------------------------------------------------------
+# Frontier subcommand (OWT + Text8)
+# -----------------------------------------------------------------
+frontier:
+  device: cuda
+  dtype: bfloat16
+  seed: 0
+  use_judge: true
+  judge_id: gpt2-large
+  owt:
+    enabled: true
+    nfe_values: [8, 16, 32, 64]
+    # τ sweep: dense enough to catch rank flips (see CANDI §6.1)
+    temperatures: [0.700, 0.750, 0.800, 0.825, 0.850, 0.875, 0.900, 0.925, 0.950, 0.975, 1.000]
+    seq_length: 1024
+    n_sequences: 64
+  text8:
+    enabled: true
+    nfe_values: [8, 16, 32, 64, 128]
+    temperatures: [0.700, 0.800, 0.900, 1.000]
+    seq_length: 1024
+    n_sequences: 64
+  models:
+    - name: mdlm-owt-110m
+      kind: mdlm
+      checkpoint: kuleshov-group/mdlm-owt
+      tokenizer: gpt2
+    - name: llada-8b
+      kind: llada
+      checkpoint: GSAI-ML/LLaDA-8B-Base
+      tokenizer: llama2            # LLaDA's native tokenizer is LLaMA-style
+    - name: sedd-medium
+      kind: sedd
+      checkpoint: /home/aneek/checkpoints/sedd-medium     # local path
+      tokenizer: gpt2
+    - name: candi-owt
+      kind: candi
+      checkpoint: /home/aneek/checkpoints/candi-owt
+      tokenizer: gpt2
+
+# -----------------------------------------------------------------
+# Diagnostics subcommand
+# -----------------------------------------------------------------
+diagnostics:
+  device: cuda
+  dtype: bfloat16
+  seq_length: 512
+  n_sequences: 32
+  noise_levels: [0.0, 0.25, 0.5, 0.75, 0.9]
+  attention: true
+  models:
+    - name: mdlm-owt-110m
+      kind: mdlm
+      checkpoint: kuleshov-group/mdlm-owt
+      tokenizer: gpt2
+
+# -----------------------------------------------------------------
+# Length-generalization subcommand
+# -----------------------------------------------------------------
+length_gen:
+  device: cuda
+  dtype: bfloat16
+  judge_id: gpt2-large
+  l_train: 1024
+  l_test: [1024, 2048, 4096]
+  nfe: 32
+  temperatures: [0.800, 0.900, 1.000]
+  n_sequences: 32
+  seed: 0
+  models:
+    - name: mdlm-rope
+      kind: mdlm
+      checkpoint: /home/aneek/checkpoints/mdlm-rope
+      tokenizer: gpt2
+      pe: rope
+    - name: mdlm-nope
+      kind: mdlm
+      checkpoint: /home/aneek/checkpoints/mdlm-nope
+      tokenizer: gpt2
+      pe: nope
+    - name: candi-rope
+      kind: candi
+      checkpoint: /home/aneek/checkpoints/candi-rope
+      tokenizer: gpt2
+      pe: rope
+    - name: candi-nope
+      kind: candi
+      checkpoint: /home/aneek/checkpoints/candi-nope
+      tokenizer: gpt2
+      pe: nope
