@@ -1,6 +1,6 @@
 # diffusion_tokenizer_bench
 
-Evaluation harness for tokenizer × diffusion-model interactions, built around the hypotheses in the [vocab-scaling & PE ablation plan](../diffusion_vocab_pe_ablation_plan.md). Implements the metrics in sections 6.1–6.3 of that plan.
+Evaluation harness for tokenizer × diffusion-model interactions, built around the hypotheses in the [vocab-scaling & PE ablation plan](../diffusion_vocabulary_ablation_plan.md). Implements the metrics in sections 6.1–6.3 of that plan.
 
 Two things this package does, cleanly separated:
 
