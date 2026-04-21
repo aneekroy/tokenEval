@@ -1,0 +1,282 @@
+[
+  {
+    "method": "mdlm-owt-110m",
+    "nfe": 8,
+    "tokenizer_name": "gpt2",
+    "corpus": "text8",
+    "points": [
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 8,
+        "temperature": 0.7,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.0014710410180972255,
+        "pct_valid_words": 0.9975026512948582,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 8,
+        "temperature": 0.8,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.002304616010302989,
+        "pct_valid_words": 0.99569579068664,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 8,
+        "temperature": 0.9,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.004037941411755743,
+        "pct_valid_words": 0.9955430269323073,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 8,
+        "temperature": 1.0,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.008937671501372011,
+        "pct_valid_words": 0.991375931007448,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "mdlm-owt-110m",
+    "nfe": 16,
+    "tokenizer_name": "gpt2",
+    "corpus": "text8",
+    "points": [
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 16,
+        "temperature": 0.7,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.00010025732713965846,
+        "pct_valid_words": 1.0,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 16,
+        "temperature": 0.8,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.0009295840111550081,
+        "pct_valid_words": 0.9964365946239058,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 16,
+        "temperature": 0.9,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.0011872455902306649,
+        "pct_valid_words": 0.9988805970149254,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 16,
+        "temperature": 1.0,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.0042417815482502655,
+        "pct_valid_words": 0.991845540644312,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "mdlm-owt-110m",
+    "nfe": 32,
+    "tokenizer_name": "gpt2",
+    "corpus": "text8",
+    "points": [
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 32,
+        "temperature": 0.7,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.00032617720317874513,
+        "pct_valid_words": 0.9993772980666588,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 32,
+        "temperature": 0.8,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.003158071560557702,
+        "pct_valid_words": 0.9938518394087015,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 32,
+        "temperature": 0.9,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.0008737864077669903,
+        "pct_valid_words": 0.9991909385113269,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 32,
+        "temperature": 1.0,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.0025469700979095,
+        "pct_valid_words": 0.9975853400370468,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "mdlm-owt-110m",
+    "nfe": 64,
+    "tokenizer_name": "gpt2",
+    "corpus": "text8",
+    "points": [
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 64,
+        "temperature": 0.7,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.00045227039739492253,
+        "pct_valid_words": 0.9996984864017368,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 64,
+        "temperature": 0.8,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.0014609884986011813,
+        "pct_valid_words": 0.9981038234379856,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 64,
+        "temperature": 0.9,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.0011676499508357916,
+        "pct_valid_words": 0.9925946411012783,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 64,
+        "temperature": 1.0,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.002287191726332538,
+        "pct_valid_words": 0.982663749668523,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "mdlm-owt-110m",
+    "nfe": 128,
+    "tokenizer_name": "gpt2",
+    "corpus": "text8",
+    "points": [
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 128,
+        "temperature": 0.7,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.001011247040252565,
+        "pct_valid_words": 0.9586621941594318,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 128,
+        "temperature": 0.8,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.001382898931183199,
+        "pct_valid_words": 0.9711700731295706,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 128,
+        "temperature": 0.9,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.0011228105194870004,
+        "pct_valid_words": 0.9470033434802135,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "mdlm-owt-110m",
+        "nfe": 128,
+        "temperature": 1.0,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.002256763952633314,
+        "pct_valid_words": 0.9320688693359028,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  }
+]

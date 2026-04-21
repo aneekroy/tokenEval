@@ -1,0 +1,282 @@
+[
+  {
+    "method": "llada-8b",
+    "nfe": 8,
+    "tokenizer_name": "llada",
+    "corpus": "text8",
+    "points": [
+      {
+        "method": "llada-8b",
+        "nfe": 8,
+        "temperature": 0.7,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.6428571428571429,
+        "pct_valid_words": 0.8214285714285714,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 8,
+        "temperature": 0.8,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.5320855614973262,
+        "pct_valid_words": 0.47593582887700536,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 8,
+        "temperature": 0.9,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 1.0,
+        "pct_valid_words": 0.0,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 8,
+        "temperature": 1.0,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.13613861386138615,
+        "pct_valid_words": 0.8960396039603961,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "llada-8b",
+    "nfe": 16,
+    "tokenizer_name": "llada",
+    "corpus": "text8",
+    "points": [
+      {
+        "method": "llada-8b",
+        "nfe": 16,
+        "temperature": 0.7,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.5054945054945055,
+        "pct_valid_words": 0.6263736263736264,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 16,
+        "temperature": 0.8,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.6325301204819277,
+        "pct_valid_words": 0.4457831325301205,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 16,
+        "temperature": 0.9,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.7009063444108762,
+        "pct_valid_words": 0.33534743202416917,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 16,
+        "temperature": 1.0,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.9041095890410958,
+        "pct_valid_words": 0.2876712328767123,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "llada-8b",
+    "nfe": 32,
+    "tokenizer_name": "llada",
+    "corpus": "text8",
+    "points": [
+      {
+        "method": "llada-8b",
+        "nfe": 32,
+        "temperature": 0.7,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.65,
+        "pct_valid_words": 0.5125,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 32,
+        "temperature": 0.8,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.644927536231884,
+        "pct_valid_words": 0.4782608695652174,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 32,
+        "temperature": 0.9,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.6787003610108303,
+        "pct_valid_words": 0.36823104693140796,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 32,
+        "temperature": 1.0,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.6666666666666666,
+        "pct_valid_words": 0.3284313725490196,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "llada-8b",
+    "nfe": 64,
+    "tokenizer_name": "llada",
+    "corpus": "text8",
+    "points": [
+      {
+        "method": "llada-8b",
+        "nfe": 64,
+        "temperature": 0.7,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.6571428571428571,
+        "pct_valid_words": 0.6571428571428571,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 64,
+        "temperature": 0.8,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.696078431372549,
+        "pct_valid_words": 0.46078431372549017,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 64,
+        "temperature": 0.9,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.6829268292682927,
+        "pct_valid_words": 0.35609756097560974,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 64,
+        "temperature": 1.0,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.7024221453287197,
+        "pct_valid_words": 0.31833910034602075,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "llada-8b",
+    "nfe": 128,
+    "tokenizer_name": "llada",
+    "corpus": "text8",
+    "points": [
+      {
+        "method": "llada-8b",
+        "nfe": 128,
+        "temperature": 0.7,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.8484848484848485,
+        "pct_valid_words": 0.2727272727272727,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 128,
+        "temperature": 0.8,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.7619047619047619,
+        "pct_valid_words": 0.30158730158730157,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 128,
+        "temperature": 0.9,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.8043478260869565,
+        "pct_valid_words": 0.31521739130434784,
+        "n_samples": 64,
+        "seed": 0
+      },
+      {
+        "method": "llada-8b",
+        "nfe": 128,
+        "temperature": 1.0,
+        "entropy": null,
+        "gen_perplexity": null,
+        "judge_perplexity": null,
+        "pct_unique_words": 0.7339901477832512,
+        "pct_valid_words": 0.3399014778325123,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  }
+]

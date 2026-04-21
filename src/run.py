@@ -182,8 +182,8 @@ def cmd_frontier(cfg: dict) -> None:
         if fc.get("owt", {}).get("enabled", True):
             curves = entropy_perplexity_frontier(
                 sampler,
-                nfe_values=fc["owt"]["nfe_values"],
-                temperatures=fc["owt"]["temperatures"],
+                nfe_values=fc["owt"].get("nfe_values", [32]),
+                temperatures=fc["owt"].get("temperatures", [1.0]),
                 seq_length=fc["owt"].get("seq_length", 1024),
                 n_sequences=fc["owt"].get("n_sequences", 64),
                 seed=fc.get("seed", 0),
@@ -198,8 +198,8 @@ def cmd_frontier(cfg: dict) -> None:
         if fc.get("text8", {}).get("enabled", False):
             curves = text8_word_frontier(
                 sampler,
-                nfe_values=fc["text8"]["nfe_values"],
-                temperatures=fc["text8"]["temperatures"],
+                nfe_values=fc["text8"].get("nfe_values", [32]),
+                temperatures=fc["text8"].get("temperatures", [1.0]),
                 source_tokenizer=sampler.tokenizer,
                 seq_length=fc["text8"].get("seq_length", 1024),
                 n_sequences=fc["text8"].get("n_sequences", 64),

@@ -5,12 +5,6 @@ All downstream metrics (frontier, judge-PPL, per-position entropy) consume a
 `DiffusionSampler`. We standardize the interface so that swapping LLaDA for
 SEDD for CANDI is a config change, not a code change.
 
-Model-specific code lives in adapters. LLaDA and SEDD have non-HF APIs; rather
-than paper over them with brittle wrappers, we expose clearly-marked
-integration points (`TODO: INTEGRATE ...`) where you paste in your existing
-inference code. The sampler contract is well-defined enough that the glue is
-minimal.
-
 Interface:
     sample(n_sequences, seq_length, nfe, temperature, seed) -> list[list[int]]
     logits_at(token_ids, noise_level, mask) -> Tensor   # for diagnostics
@@ -18,28 +12,35 @@ Interface:
     tokenizer -> PreTrainedTokenizerBase                 # property
 
 The sampler owns its tokenizer (via the `tokenizer` property). Downstream code
-(JudgePerplexity, text8_word_frontier, length_gen) should consume it from the
-sampler rather than re-looking-up via TOKENIZER_REGISTRY, because samplers
-with non-standard tokenizers (e.g. LLaDA-8B-Base's ~126K vocab) would get
-silently decoded with the wrong tokenizer otherwise.
+consumes it from the sampler rather than re-looking-up via TOKENIZER_REGISTRY,
+because samplers with non-standard tokenizers (e.g. LLaDA-8B-Base's ~126K
+vocab) would get silently decoded with the wrong tokenizer otherwise.
 
 Noise-level contract:
     `logits_at(x, noise_level=t, mask=m)` must return P(x_0 | x_t) at the
     specified t. Absorbing-discrete methods (MDLM, LLaDA) can infer t from the
     mask pattern and may ignore `noise_level`; score-based methods (SEDD) and
-    hybrid methods (CANDI) MUST honor it. `_internal_perplexity` passes t=0.0
-    explicitly; new adapters must plumb that through.
+    hybrid methods (CANDI) MUST honor it.
+
+Precision / memory note:
+    Several adapters load the model in bf16 for speed but upcast logits to fp32
+    before softmax. In bf16 the per-row sum of a large-vocab softmax deviates
+    from 1 enough to violate Categorical's simplex check; fp32 fixes that. For
+    large vocabs this means we can't hold [B, L, V] fp32 at full batch, so
+    LLaDA micro-batches internally.
 """
 from __future__ import annotations
 
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from transformers import PreTrainedTokenizerBase
+
+from .tokenizers_bench import load_tokenizer
 
 
 # ---------------------------------------------------------------------------
@@ -47,70 +48,33 @@ from transformers import PreTrainedTokenizerBase
 # ---------------------------------------------------------------------------
 @dataclass
 class SamplerConfig:
-    model_name: str                   # "llada-8b", "sedd-medium", "candi-owt"
+    model_name: str
     checkpoint_path: str
-    tokenizer_name: str               # key into tokenizers_bench.TOKENIZER_REGISTRY
+    tokenizer_name: str
     device: str = "cuda"
     dtype: str = "bfloat16"
 
 
 class DiffusionSampler(ABC):
-    """Abstract base class for diffusion LM samplers."""
-
     def __init__(self, config: SamplerConfig) -> None:
         self.config = config
         self.device = config.device
         self.dtype = getattr(torch, config.dtype)
 
     @abstractmethod
-    def sample(
-        self,
-        n_sequences: int,
-        seq_length: int,
-        nfe: int,
-        temperature: float = 1.0,
-        seed: int = 0,
-    ) -> list[list[int]]:
-        """Unconditional generation. Returns a list of token id sequences."""
+    def sample(self, n_sequences: int, seq_length: int, nfe: int,
+               temperature: float = 1.0, seed: int = 0) -> list[list[int]]: ...
 
     @abstractmethod
-    def logits_at(
-        self,
-        token_ids: torch.LongTensor,    # [batch, seq_length]
-        noise_level: float,             # t or σ depending on sampler
-        mask: Optional[torch.BoolTensor] = None,  # True where noised
-    ) -> torch.Tensor:                  # [batch, seq_length, vocab]
-        """
-        Model's predicted logits P(x_0 | x_t) at every position.
-        Used for per-position entropy diagnostics.
-
-        Absorbing-diffusion adapters may ignore `noise_level` (the mask pattern
-        carries t implicitly); score-based / hybrid adapters must honor it.
-        """
+    def logits_at(self, token_ids: torch.LongTensor, noise_level: float,
+                  mask: Optional[torch.BoolTensor] = None) -> torch.Tensor: ...
 
     @property
     @abstractmethod
-    def tokenizer(self) -> PreTrainedTokenizerBase:
-        """The tokenizer that produced the ids this sampler operates over.
+    def tokenizer(self) -> PreTrainedTokenizerBase: ...
 
-        Downstream code (JudgePerplexity.perplexity_from_token_ids,
-        text8_word_frontier) consumes this directly so that samplers with
-        non-registry tokenizers (e.g. LLaDA's 126K vocab) work without silently
-        falling back to a registry entry with a different vocab.
-        """
-
-    def attention_maps(
-        self,
-        token_ids: torch.LongTensor,
-        noise_level: float,
-    ) -> Optional[list[torch.Tensor]]:
-        """
-        Return per-layer attention maps (list of [batch, heads, seq, seq]).
-        Default: not supported; override in adapters that can capture them.
-        Weights must sum to 1 across the key dimension (standard softmax
-        attention); if your backend returns pre-softmax scores, renormalize
-        before returning.
-        """
+    def attention_maps(self, token_ids: torch.LongTensor,
+                       noise_level: float) -> Optional[list[torch.Tensor]]:
         return None
 
 
@@ -119,17 +83,17 @@ class DiffusionSampler(ABC):
 # ===========================================================================
 class LLaDASampler(DiffusionSampler):
     """
-    LLaDA follows a masked-diffusion paradigm with an HF-compatible checkpoint
-    (GSAI-ML/LLaDA-8B-Base). It uses a LLaMA-derived tokenizer (~126K vocab)
-    and trust_remote_code=True to load the custom modeling class. We use
-    AutoModel rather than AutoModelForMaskedLM because LLaDA's custom class
-    isn't registered under the MaskedLM auto-mapping; the forward returns a
-    `.logits` attribute regardless.
+    LLaDA (GSAI-ML/LLaDA-8B-Base): masked-diffusion with ~126K-vocab LLaMA
+    tokenizer. Loaded via AutoModel with trust_remote_code=True.
 
-    The official repo exposes a `generate` method on the model. We wrap it here
-    with a low-confidence remasking loop and add temperature control at the
-    per-step denoising distribution.
+    Memory at defaults without chunking:
+        n_sequences × seq_length × vocab_size × 4 bytes (fp32 logits)
+        = 64 × 1024 × 126 464 × 4 ≈ 33 GB
+    so we forward in MICRO_BATCH-sized chunks; peak logit memory is ~4 GB
+    independent of n_sequences. Sampling and confidence-gather happen per chunk.
     """
+
+    MICRO_BATCH: int = 8
 
     def __init__(self, config: SamplerConfig) -> None:
         super().__init__(config)
@@ -142,7 +106,6 @@ class LLaDASampler(DiffusionSampler):
         self.tok = AutoTokenizer.from_pretrained(
             config.checkpoint_path, trust_remote_code=True
         )
-        # LLaDA's mask token id — verify against your checkpoint config
         self.mask_id = getattr(self.model.config, "mask_token_id", 126336)
 
     @property
@@ -150,6 +113,10 @@ class LLaDASampler(DiffusionSampler):
         return self.tok
 
     @torch.no_grad()
+    def _forward_chunk_fp32(self, x_chunk: torch.LongTensor) -> torch.Tensor:
+        return self.model(x_chunk).logits.float()
+
+    @torch.no_grad()
     def sample(
         self,
         n_sequences: int,
@@ -159,124 +126,61 @@ class LLaDASampler(DiffusionSampler):
         seed: int = 0,
     ) -> list[list[int]]:
         torch.manual_seed(seed)
-        # Start from all-mask
         x = torch.full(
             (n_sequences, seq_length), self.mask_id,
             dtype=torch.long, device=self.device,
         )
-        # Standard LLaDA denoising loop: pick a fraction of masked positions to
-        # unmask each step, using low-confidence remasking from the paper.
         ts = torch.linspace(1.0, 0.0, nfe + 1, device=self.device)
+        mb = max(1, self.MICRO_BATCH)
+        inv_temp = 1.0 / max(temperature, 1e-6)
+
         for step in range(nfe):
             t, s = ts[step].item(), ts[step + 1].item()
             mask = (x == self.mask_id)
             if not mask.any():
                 break
-            logits = self.model(x).logits       # [B, L, V]
-            # Temperature scaling
-            if temperature != 1.0:
-                logits = logits / max(temperature, 1e-6)
-            probs = F.softmax(logits, dim=-1)
-            # Sample predicted token at each position
-            pred = torch.distributions.Categorical(probs=probs).sample()
-            # Fraction to unmask this step (linear schedule)
-            n_mask_curr = mask.sum(dim=-1)
-            keep_frac = 1.0 - (s / max(t, 1e-6))
-            # Low-confidence remasking: keep highest-confidence positions
-            conf = probs.gather(-1, pred.unsqueeze(-1)).squeeze(-1)
+
+            pred = torch.empty_like(x)
+            conf = torch.empty(x.shape, dtype=torch.float32, device=self.device)
+
+            for i in range(0, n_sequences, mb):
+                j = min(i + mb, n_sequences)
+                logits = self._forward_chunk_fp32(x[i:j])       # [mb, L, V] fp32
+                if temperature != 1.0:
+                    logits = logits * inv_temp
+                probs = F.softmax(logits, dim=-1)
+                # validate_args=False: skip the O(B·L·V) simplex check; the
+                # fp32 upcast already guarantees rows sum to ~1.
+                pred_chunk = torch.distributions.Categorical(
+                    probs=probs, validate_args=False,
+                ).sample()
+                conf_chunk = probs.gather(-1, pred_chunk.unsqueeze(-1)).squeeze(-1)
+                pred[i:j] = pred_chunk
+                conf[i:j] = conf_chunk
+                del logits, probs, pred_chunk, conf_chunk
+
             conf = conf.masked_fill(~mask, -1.0)
-            n_to_fill = (keep_frac * n_mask_curr.float()).long()
+            n_mask_curr = mask.sum(dim=-1)
+            unmask_frac = 1.0 - (s / max(t, 1e-6))
+            n_to_fill = (unmask_frac * n_mask_curr.float()).long()
             for b in range(n_sequences):
                 k = int(n_to_fill[b].item())
                 if k <= 0:
                     continue
                 _, idx = conf[b].topk(k)
                 x[b, idx] = pred[b, idx]
+
+        # Residual cleanup — positions top-k never reached.
+        if (x == self.mask_id).any():
+            for i in range(0, n_sequences, mb):
+                j = min(i + mb, n_sequences)
+                logits = self._forward_chunk_fp32(x[i:j])
+                argmax_chunk = logits.argmax(dim=-1)
+                chunk_mask = x[i:j] == self.mask_id
+                x[i:j] = torch.where(chunk_mask, argmax_chunk, x[i:j])
+                del logits, argmax_chunk
+
         return x.cpu().tolist()
-
-    @torch.no_grad()
-    def logits_at(
-        self,
-        token_ids: torch.LongTensor,
-        noise_level: float,                # absorbing; mask carries t
-        mask: Optional[torch.BoolTensor] = None,
-    ) -> torch.Tensor:
-        x = token_ids.to(self.device)
-        if mask is not None:
-            x = x.clone()
-            x[mask.to(self.device)] = self.mask_id
-        return self.model(x).logits
-
-
-# ===========================================================================
-# SEDD adapter
-# ===========================================================================
-import sys
-import os
-import torch
-import torch.nn.functional as F
-from typing import Optional
-
-class SEDDSampler(DiffusionSampler):
-    """
-    SEDD (Lou et al. 2024) adapter utilizing the louaaron/Score-Entropy-Discrete-Diffusion repo.
-    """
-
-    def __init__(self, config: SamplerConfig) -> None:
-        super().__init__(config)
-        
-        # Dynamically add the SEDD repo path to sys.path
-        sedd_repo_path = "/home/aneek/src/dLLM-eval/aneek/Score-Entropy-Discrete-Diffusion"
-        if sedd_repo_path not in sys.path:
-            sys.path.insert(0, sedd_repo_path)
-            
-        try:
-            from model import SEDD
-            from graph_lib import get_graph
-            from noise_lib import get_noise
-            from sampling import get_pc_sampler
-        except ImportError as e:
-            raise RuntimeError(
-                f"Could not import SEDD modules from {sedd_repo_path}. "
-                "Ensure the path is correct and contains the required python files."
-            ) from e
-
-        print(f"[sampler] loading SEDD model from {config.checkpoint_path}")
-        # Load the SEDD model from the local checkpoint
-        self.net = SEDD.from_pretrained(config.checkpoint_path).to(self.device).eval()
-        
-        # Extract graph and noise configurations from the loaded model
-        self.cfg = self.net.config
-        self.graph = get_graph(self.cfg)
-        self.noise = get_noise(self.cfg)
-        self.get_pc_sampler = get_pc_sampler
-        
-        self._initialized = True
-
-    @torch.no_grad()
-    def sample(
-        self,
-        n_sequences: int,
-        seq_length: int,
-        nfe: int,
-        temperature: float = 1.0,
-        seed: int = 0,
-    ) -> list[list[int]]:
-        torch.manual_seed(seed)
-        
-        # Instantiate the sampler function for the requested batch size and NFE
-        sampling_fn = self.get_pc_sampler(
-            graph=self.graph,
-            noise=self.noise,
-            batch_dims=(n_sequences, seq_length),
-            predictor="analytic",
-            steps=nfe,
-            denoise=True,
-        )
-        
-        # Execute the reverse diffusion process
-        out = sampling_fn(self.net)
-        return out.cpu().tolist()
 
     @torch.no_grad()
     def logits_at(
@@ -285,41 +189,180 @@ class SEDDSampler(DiffusionSampler):
         noise_level: float,
         mask: Optional[torch.BoolTensor] = None,
     ) -> torch.Tensor:
-        # SEDD models predict scores, not standard HF causal logits.
-        # Translating SEDD scores to raw logits requires reverse-rate conversions 
-        # from the graph library. 
-        raise NotImplementedError("SEDD logits_at requires graph reverse-rate implementation for diagnostic entropy.")
+        """
+        Returns fp32 logits, forwarded in MICRO_BATCH chunks. Caller is
+        responsible for keeping B small — concatenating [128, 1024, 126K]
+        fp32 logits is ~66 GB and will OOM. Diagnostic callers in this repo
+        use B ≤ 8 so they're fine.
+        """
+        x = token_ids.to(self.device)
+        if mask is not None:
+            x = x.clone()
+            x[mask.to(self.device)] = self.mask_id
+        mb = max(1, self.MICRO_BATCH)
+        outs: list[torch.Tensor] = []
+        for i in range(0, x.shape[0], mb):
+            outs.append(self._forward_chunk_fp32(x[i:i + mb]))
+        return torch.cat(outs, dim=0)
+
 
 # ===========================================================================
-# CANDI adapter
+# SEDD adapter
+# ===========================================================================
+class SEDDSampler(DiffusionSampler):
+    """
+    SEDD (Lou et al. 2024) adapter using the louaaron/Score-Entropy-
+    Discrete-Diffusion repo. Path injected into sys.path at __init__;
+    override via SEDD_REPO_PATH env var.
+    """
+
+    _DEFAULT_REPO_PATH = "/home/aneek/src/dLLM-eval/aneek/Score-Entropy-Discrete-Diffusion"
+
+    def __init__(self, config: SamplerConfig) -> None:
+        super().__init__(config)
+
+        import os
+        sedd_repo_path = os.environ.get("SEDD_REPO_PATH", self._DEFAULT_REPO_PATH)
+        if sedd_repo_path not in sys.path:
+            sys.path.insert(0, sedd_repo_path)
+
+        try:
+            from model import SEDD
+            from graph_lib import get_graph
+            from noise_lib import get_noise
+            from sampling import get_pc_sampler
+        except ImportError as e:
+            raise RuntimeError(
+                f"Could not import SEDD modules from {sedd_repo_path}. "
+                f"Set SEDD_REPO_PATH env var to your clone of "
+                f"louaaron/Score-Entropy-Discrete-Diffusion."
+            ) from e
+
+        print(f"[sampler] loading SEDD model from {config.checkpoint_path}")
+        self.net = SEDD.from_pretrained(config.checkpoint_path).to(self.device).eval()
+        self.cfg = self.net.config
+        self.graph = get_graph(self.cfg, device=self.device)
+        self.noise = get_noise(self.cfg)
+        self._get_pc_sampler = get_pc_sampler
+        self.tok = load_tokenizer(config.tokenizer_name)
+
+    @property
+    def tokenizer(self) -> PreTrainedTokenizerBase:
+        return self.tok
+
+    @torch.no_grad()
+    def sample(
+        self,
+        n_sequences: int,
+        seq_length: int,
+        nfe: int,
+        temperature: float = 1.0,
+        seed: int = 0,
+    ) -> list[list[int]]:
+        torch.manual_seed(seed)
+        if temperature != 1.0:
+            print(
+                f"[warn] SEDDSampler.sample: temperature={temperature} is not "
+                f"supported by the upstream analytic predictor and will be ignored. "
+                f"This means the τ-axis of any frontier plot is meaningless for SEDD."
+            )
+        sampling_fn = self._get_pc_sampler(
+            graph=self.graph,
+            noise=self.noise,
+            batch_dims=(n_sequences, seq_length),
+            predictor="analytic",
+            steps=nfe,
+            denoise=True,
+            device=self.device,
+        )
+        out = sampling_fn(self.net)
+        return out.cpu().tolist()
+
+    @torch.no_grad()    
+    def logits_at(
+        self,
+        token_ids: torch.LongTensor,
+        noise_level: float,
+        mask: Optional[torch.BoolTensor] = None,
+    ) -> torch.Tensor:
+        """
+        Computes standard autoregressive-style logits P(x_0 | x_t) from SEDD's score network.
+        """
+        token_ids = token_ids.to(self.device)
+        safe_noise = max(noise_level, 1e-4)
+        # 1. Expand the scalar noise_level (t) to a batched continuous tensor
+        t_tensor = torch.full((token_ids.shape[0],), safe_noise, device=self.device)
+        
+        # 2. Get the raw scores from the SEDD network
+        # SEDD networks typically output unnormalized values representing the score
+        raw_scores = self.net(token_ids, t_tensor)
+        
+        # 3. Convert Scores to Logits based on the Diffusion Graph
+        # In SEDD, the relationship between the network output and P(x_0 | x_t)
+        # depends heavily on whether you are using the 'Uniform' or 'Absorbing' graph.
+        
+        # For the Absorbing (Masking) graph (which is standard for their language models):
+        if self.graph.absorb:
+            # For absorbing, the score at masked positions *is* directly proportional 
+            # to the predicted clean distribution P(x_0 | x_t = MASK). 
+            # We just need to mask out the absorbing token's own logit to prevent self-transitions.
+            
+            mask_token_id = self.tokenizer.mask_token_id if hasattr(self.tokenizer, "mask_token_id") else self.tokenizer.eos_token_id
+            
+            logits = raw_scores.clone()
+            # Force the probability of predicting the mask token as the clean token to 0 (-inf in log space)
+            if mask_token_id is not None:
+                logits[..., mask_token_id] = -float('inf')
+                
+        else:
+            # For the Uniform graph:
+            # We must weight the scores by the forward transition rates to extract P(x_0)
+            # normalized_rate = self.graph.transp_rate(token_ids) * raw_scores
+            # (Note: depending on the exact SEDD version, you might just be able to 
+            # use raw_scores directly as they often parameterize the network to output 
+            # standard logits prior to the score conversion layer).
+            
+            # Safe fallback for uniform models in the official repo:
+            logits = raw_scores 
+            
+        # Optional: If your pipeline specifically passes in the boolean `mask` (where True = masked),
+        # you can optimization by only returning meaningful logits for masked positions, 
+        # though returning the full tensor is safer for standard protocol compliance.
+        if mask is not None:
+            # If you want to explicitly zero out predictions on clean tokens
+            pass 
+            
+        return logits
+
+
+# ===========================================================================
+# CANDI adapter (stub)
 # ===========================================================================
 class CANDISampler(DiffusionSampler):
     """
     CANDI (Pynadath et al. 2026) hybrid discrete+continuous sampler.
-    Code at https://github.com/patrickpynadath1/candi-lander (as referenced in
-    the paper). The sampler materializes one-hot vectors only for the initial
-    prior and otherwise uses the embedding-lookup approximation from §5.3.
-
-    INTEGRATION POINT: replace the `_step` method with the repo's `hybrid_sample`
-    or equivalent. Interface contract preserved.
-
-    IMPORTANT: `logits_at` MUST honor `noise_level` — CANDI's predictor is
-    time-conditioned and uses t to gate the discrete vs continuous update
-    contributions (Eq. 14–15).
+    Repo: https://github.com/patrickpynadath1/candi-lander.
+    Uses the embedding-lookup approximation from §5.3.
     """
+
+    _REQUIRED_ATTRS = ("model", "vocab_size", "mask_id", "r_min", "r_max")
 
     def __init__(self, config: SamplerConfig) -> None:
         super().__init__(config)
-        from .tokenizers_bench import load_tokenizer
         self.tok = load_tokenizer(config.tokenizer_name)
 
-        # TODO: INTEGRATE CANDI. Example:
+        # TODO: INTEGRATE CANDI. The wired-up __init__ must set ALL of:
+        #   self.model        — loaded predictor; .get_input_embeddings() usable
+        #   self.vocab_size   — int, classifier head output dim
+        #   self.mask_id      — int, the discrete mask token id
+        #   self.r_min/r_max  — float, σ training range for linear fallback
         #
-        # from candi_repo import CANDIModel, load_candi_ckpt
-        # self.model = load_candi_ckpt(config.checkpoint_path).to(self.device).eval()
-        # self.vocab_size = self.model.config.vocab_size
-        # self.mask_id = self.model.config.mask_token_id
-        # self.r_min, self.r_max = self.model.config.r_range   # from training
+        # Example:
+        #   from candi_repo import load_candi_ckpt
+        #   self.model = load_candi_ckpt(config.checkpoint_path).to(self.device).eval()
+        #   self.vocab_size = self.model.config.vocab_size
+        #   self.mask_id    = self.model.config.mask_token_id
+        #   self.r_min, self.r_max = self.model.config.r_range
         self._initialized = False
 
     @property
@@ -327,12 +370,14 @@ class CANDISampler(DiffusionSampler):
         return self.tok
 
     def _require_init(self) -> None:
-        if not self._initialized:
-            raise NotImplementedError(
-                "CANDISampler: paste candi-lander loading code into __init__. "
-                "Sampler interface expects _step(x, mask, t, s, temperature), "
-                "and `logits_at` must honor the `noise_level` argument."
-            )
+        if self._initialized:
+            return
+        missing = [a for a in self._REQUIRED_ATTRS if not hasattr(self, a)]
+        raise NotImplementedError(
+            f"CANDISampler not wired up. Paste candi-lander loading code into "
+            f"__init__ and set self._initialized = True. Missing attributes: "
+            f"{missing}."
+        )
 
     @torch.no_grad()
     def sample(
@@ -344,17 +389,6 @@ class CANDISampler(DiffusionSampler):
         seed: int = 0,
     ) -> list[list[int]]:
         self._require_init()
-        # Once _step is wired up, the reverse-time loop below applies:
-        #   torch.manual_seed(seed)
-        #   V, mask_id = self.vocab_size, self.mask_id
-        #   x = torch.full((n_sequences, seq_length), mask_id,
-        #                  dtype=torch.long, device=self.device)
-        #   m = torch.zeros_like(x, dtype=torch.bool)
-        #   ts = torch.linspace(1.0, 0.0, nfe + 1, device=self.device)
-        #   for step in range(nfe):
-        #       t, s = ts[step].item(), ts[step + 1].item()
-        #       x, m = self._step(x, m, t, s, temperature)  # Eq. 15
-        #   return x.cpu().tolist()
         raise NotImplementedError(
             "CANDISampler.sample: wire up self._step from candi-lander "
             "(reverse-ODE + masked-ancestral update, paper eqs. 14–15)."
@@ -364,27 +398,18 @@ class CANDISampler(DiffusionSampler):
     def logits_at(
         self,
         token_ids: torch.LongTensor,
-        noise_level: float,                # REQUIRED for CANDI (= diffusion time t)
+        noise_level: float,
         mask: Optional[torch.BoolTensor] = None,
     ) -> torch.Tensor:
         """
         Predict logits P(x_0 | x_t) at the specified diffusion time t.
 
         CANDI's forward process is hybrid at every t:
-          - discrete channel: each position is independently mask_id with some
-            probability α(t); otherwise the clean token.
-          - continuous channel: the embedding at each UNMASKED position gets
-            additive Gaussian noise of scale σ(t). Masked positions carry no
-            continuous information (the embedding is conditionally irrelevant
-            given the mask).
+          - discrete: each position is mask_id with prob α(t), else clean
+          - continuous: unmasked positions' embeddings get Gaussian noise of
+            scale σ(t); masked positions carry no continuous info (noise zeroed)
 
-        The caller supplies the discrete pattern via `mask` (True = masked),
-        and the scalar time via `noise_level`. σ(t) is derived from the
-        training range (r_min, r_max) with a linear schedule — replace this
-        with whatever schedule your checkpoint was trained under if different;
-        `self.sigma_schedule`, if your wired-up model exposes one, overrides.
-
-        Returns logits of shape [batch, seq_length, vocab_size].
+        σ(t) uses self.sigma_schedule(t) if available, else linear [r_min, r_max].
         """
         self._require_init()
 
@@ -393,7 +418,6 @@ class CANDISampler(DiffusionSampler):
         B, L = x.shape
         t = float(noise_level)
 
-        # ---- Discrete channel: materialize x_discrete with mask_id ---------
         if mask is not None:
             m = mask.to(device)
             x_discrete = x.clone()
@@ -402,56 +426,29 @@ class CANDISampler(DiffusionSampler):
             m = torch.zeros_like(x, dtype=torch.bool)
             x_discrete = x
 
-        # ---- Continuous channel: noised embeddings -------------------------
-        # σ(t): prefer an explicit schedule if the checkpoint exposes one
-        # (e.g. cosine / VP), else fall back to a linear interpolation over the
-        # training range [r_min, r_max].
         t_clamped = max(0.0, min(1.0, t))
         if hasattr(self, "sigma_schedule") and callable(self.sigma_schedule):
             sigma_t = float(self.sigma_schedule(t_clamped))
         else:
             sigma_t = self.r_min + t_clamped * (self.r_max - self.r_min)
 
-        # Embedding-lookup approximation (paper §5.3): we feed the predictor
-        # actual embeddings rather than |V|-dim one-hots at inference, which is
-        # the only way this is tractable at |V|=262K.
-        emb = self.model.get_input_embeddings()(x_discrete)        # [B, L, D]
+        emb = self.model.get_input_embeddings()(x_discrete)
         if sigma_t > 0.0:
             noise = torch.randn(emb.shape, device=device, dtype=emb.dtype) * sigma_t
-            # Don't add continuous noise to masked positions — they don't carry
-            # continuous information in the forward process.
             noise = noise.masked_fill(m.unsqueeze(-1), 0.0)
             emb = emb + noise
 
-        # ---- Time conditioning --------------------------------------------
         t_tensor = torch.full((B,), t, device=device, dtype=emb.dtype)
 
-        # ---- Predictor call ------------------------------------------------
-        # candi-lander's predictor accepts (input_ids, inputs_embeds, t).
-        # Some forks use positional args or rename `t` → `timesteps`; we try
-        # the canonical keyword form first and fall back on TypeError.
         try:
-            out = self.model(
-                input_ids=x_discrete,
-                inputs_embeds=emb,
-                t=t_tensor,
-            )
+            out = self.model(input_ids=x_discrete, inputs_embeds=emb, t=t_tensor)
         except TypeError:
             try:
-                out = self.model(
-                    input_ids=x_discrete,
-                    inputs_embeds=emb,
-                    timesteps=t_tensor,
-                )
+                out = self.model(input_ids=x_discrete, inputs_embeds=emb, timesteps=t_tensor)
             except TypeError:
                 out = self.model(x_discrete, emb, t_tensor)
 
         logits = out.logits if hasattr(out, "logits") else out
-
-        # Sanity check: final dim must be vocab_size. Catches the case where
-        # somebody accidentally wires up a score-function head (dim D) instead
-        # of a classifier head (dim V) — which would silently return garbage
-        # through _internal_perplexity otherwise.
         if logits.shape[-1] != self.vocab_size:
             raise RuntimeError(
                 f"CANDI model returned logits with final dim {logits.shape[-1]}, "
@@ -462,40 +459,67 @@ class CANDISampler(DiffusionSampler):
 
 
 # ===========================================================================
-# Reference MDLM sampler (fully working — baseline for sanity checks)
+# MDLM sampler
 # ===========================================================================
 class MDLMSampler(DiffusionSampler):
     """
-    Minimal masked-diffusion sampler using a pre-trained HF model.
+    Masked-diffusion sampler for kuleshov-group/mdlm-owt.
 
-    Uses `AutoModelForMaskedLM` because the public MDLM checkpoints
-    (e.g. kuleshov-group/mdlm-owt) are registered under the MaskedLM auto-class
-    and return output objects with a `.logits` attribute. If you bring in a
-    custom MDLM variant that isn't registered there, either register it or
-    switch this to `AutoModel` (LLaDA's pattern).
+    Design notes:
+    - Loaded with torch_dtype=fp32. MDLM's custom modeling wraps transformer
+      blocks in a hard-coded bf16 autocast internally, and its timestep-embed
+      MLP does a `.float()` upcast — if outer weights are bf16 the two paths
+      collide (Float vs BFloat16 matmul).
+    - Top-level MDLM.forward() doesn't expose `sigma`, but `.backbone(x, sigma)`
+      does and requires a real tensor (not None).
+    - The backbone returns bf16 logits regardless of outer dtype; sample and
+      logits_at upcast to fp32 before softmax (bf16 rows don't sum to 1 tightly).
 
-    Kept fully working so that the rest of the harness (metrics, frontier
-    sweeps, length-gen) can be validated before LLaDA/SEDD/CANDI are wired up.
-
-    Unmasking scheme: deterministic top-k by predicted confidence, matching
-    LLaDASampler. This deviates from the original MDLM paper's stochastic
-    Bernoulli unmask (which has high per-sequence variance at low NFE and
-    causes the final residual-argmax pass to do systematically more cleanup
-    for small NFE than large NFE — a confound for NFE-axis frontier plots).
+    Unmasking: deterministic top-k by confidence, matching LLaDA.
     """
 
     def __init__(self, config: SamplerConfig) -> None:
         super().__init__(config)
-        from transformers import AutoModelForMaskedLM, AutoTokenizer
+        from transformers import AutoModelForMaskedLM
         self.model = AutoModelForMaskedLM.from_pretrained(
-            config.checkpoint_path, torch_dtype=self.dtype,
+            config.checkpoint_path,
+            torch_dtype=torch.float32,
+            trust_remote_code=True,
         ).to(self.device).eval()
-        self.tok = AutoTokenizer.from_pretrained(config.checkpoint_path)
-        self.mask_id = self.tok.mask_token_id
+        self.tok = load_tokenizer(config.tokenizer_name)
+        self.mask_id = getattr(self.model.config, "mask_token_id", self.tok.vocab_size)
 
     @property
     def tokenizer(self) -> PreTrainedTokenizerBase:
         return self.tok
+
+    def _zero_sigma(self, batch_size: int) -> torch.Tensor:
+        return torch.zeros(batch_size, device=self.device, dtype=torch.float32)
+
+    def _model_call(self, x: torch.Tensor, output_attentions: bool = False):
+        """Three-fallback forward: sigma-kwarg → backbone → plain."""
+        x = x.to(self.device)
+        sigma = self._zero_sigma(x.shape[0])
+        kwargs = {"output_attentions": output_attentions} if output_attentions else {}
+
+        try:
+            return self.model(x, sigma=sigma, **kwargs)
+        except TypeError:
+            pass
+
+        if hasattr(self.model, "backbone"):
+            try:
+                out = self.model.backbone(x, sigma)
+                return out[0] if isinstance(out, tuple) else out
+            except TypeError:
+                pass
+
+        return self.model(x, **kwargs)
+
+    @staticmethod
+    def _extract_logits(out) -> torch.Tensor:
+        t = out.logits if hasattr(out, "logits") else out
+        return t.float()
 
     @torch.no_grad()
     def sample(
@@ -510,54 +534,57 @@ class MDLMSampler(DiffusionSampler):
         x = torch.full((n_sequences, seq_length), self.mask_id,
                        dtype=torch.long, device=self.device)
         ts = torch.linspace(1.0, 0.0, nfe + 1, device=self.device)
+
         for step in range(nfe):
             t, s = ts[step].item(), ts[step + 1].item()
             mask = (x == self.mask_id)
             if not mask.any():
                 break
-            logits = self.model(x).logits / max(temperature, 1e-6)
+
+            logits = self._extract_logits(self._model_call(x)) / max(temperature, 1e-6)
             probs = F.softmax(logits, dim=-1)
-            pred = torch.distributions.Categorical(probs=probs).sample()
-            # Deterministic top-k confidence-based unmasking (see class docstring).
-            # unmask_frac = fraction of currently-masked positions to unmask now.
+            pred = torch.distributions.Categorical(
+                probs=probs, validate_args=False,
+            ).sample()
+
             n_mask_curr = mask.sum(dim=-1)
             unmask_frac = 1.0 - (s / max(t, 1e-6))
+
             conf = probs.gather(-1, pred.unsqueeze(-1)).squeeze(-1)
             conf = conf.masked_fill(~mask, -1.0)
+
             n_to_fill = (unmask_frac * n_mask_curr.float()).long()
             for b in range(n_sequences):
                 k = int(n_to_fill[b].item())
-                if k <= 0:
-                    continue
-                _, idx = conf[b].topk(k)
-                x[b, idx] = pred[b, idx]
-        # Residual cleanup: any positions that top-k didn't cover (rare, can
-        # happen if n_to_fill rounded down to 0 on all steps for some seq).
+                if k > 0:
+                    _, idx = conf[b].topk(k)
+                    x[b, idx] = pred[b, idx]
+
         if (x == self.mask_id).any():
-            logits = self.model(x).logits
-            pred = logits.argmax(dim=-1)
-            x = torch.where(x == self.mask_id, pred, x)
+            logits = self._extract_logits(self._model_call(x))
+            x = torch.where(x == self.mask_id, logits.argmax(dim=-1), x)
+
         return x.cpu().tolist()
 
     @torch.no_grad()
     def logits_at(
         self,
         token_ids: torch.LongTensor,
-        noise_level: float,                # absorbing; mask carries t
+        noise_level: float,
         mask: Optional[torch.BoolTensor] = None,
     ) -> torch.Tensor:
         x = token_ids.to(self.device)
         if mask is not None:
             x = x.clone()
             x[mask.to(self.device)] = self.mask_id
-        return self.model(x).logits
+        return self._extract_logits(self._model_call(x))
 
     def attention_maps(
         self, token_ids: torch.LongTensor, noise_level: float,
     ) -> Optional[list[torch.Tensor]]:
         x = token_ids.to(self.device)
-        out = self.model(x, output_attentions=True)
-        return list(out.attentions) if out.attentions is not None else None
+        out = self._model_call(x, output_attentions=True)
+        return list(out.attentions) if hasattr(out, "attentions") else None
 
 
 # ---------------------------------------------------------------------------

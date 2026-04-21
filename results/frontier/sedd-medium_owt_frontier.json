@@ -1,0 +1,142 @@
+[
+  {
+    "method": "sedd-medium",
+    "nfe": 8,
+    "tokenizer_name": "gpt2",
+    "corpus": "owt",
+    "points": [
+      {
+        "method": "sedd-medium",
+        "nfe": 8,
+        "temperature": 1.0,
+        "entropy": 7.407946554918062,
+        "gen_perplexity": 1368.0,
+        "judge_perplexity": 569.2155854992817,
+        "pct_unique_words": null,
+        "pct_valid_words": null,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "sedd-medium",
+    "nfe": 16,
+    "tokenizer_name": "gpt2",
+    "corpus": "owt",
+    "points": [
+      {
+        "method": "sedd-medium",
+        "nfe": 16,
+        "temperature": 1.0,
+        "entropy": 7.354910318228345,
+        "gen_perplexity": 856.0,
+        "judge_perplexity": 229.84595447243873,
+        "pct_unique_words": null,
+        "pct_valid_words": null,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "sedd-medium",
+    "nfe": 32,
+    "tokenizer_name": "gpt2",
+    "corpus": "owt",
+    "points": [
+      {
+        "method": "sedd-medium",
+        "nfe": 32,
+        "temperature": 1.0,
+        "entropy": 7.258471447408197,
+        "gen_perplexity": 604.0,
+        "judge_perplexity": 123.95756152424667,
+        "pct_unique_words": null,
+        "pct_valid_words": null,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "sedd-medium",
+    "nfe": 64,
+    "tokenizer_name": "gpt2",
+    "corpus": "owt",
+    "points": [
+      {
+        "method": "sedd-medium",
+        "nfe": 64,
+        "temperature": 1.0,
+        "entropy": 7.146494669593681,
+        "gen_perplexity": 502.0,
+        "judge_perplexity": 82.86536539595285,
+        "pct_unique_words": null,
+        "pct_valid_words": null,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "sedd-medium",
+    "nfe": 128,
+    "tokenizer_name": "gpt2",
+    "corpus": "owt",
+    "points": [
+      {
+        "method": "sedd-medium",
+        "nfe": 128,
+        "temperature": 1.0,
+        "entropy": 7.03753971635385,
+        "gen_perplexity": 430.0,
+        "judge_perplexity": 63.08359412475491,
+        "pct_unique_words": null,
+        "pct_valid_words": null,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "sedd-medium",
+    "nfe": 256,
+    "tokenizer_name": "gpt2",
+    "corpus": "owt",
+    "points": [
+      {
+        "method": "sedd-medium",
+        "nfe": 256,
+        "temperature": 1.0,
+        "entropy": 6.875517196879427,
+        "gen_perplexity": 378.0,
+        "judge_perplexity": 47.981552882937265,
+        "pct_unique_words": null,
+        "pct_valid_words": null,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  },
+  {
+    "method": "sedd-medium",
+    "nfe": 512,
+    "tokenizer_name": "gpt2",
+    "corpus": "owt",
+    "points": [
+      {
+        "method": "sedd-medium",
+        "nfe": 512,
+        "temperature": 1.0,
+        "entropy": 6.76402090636409,
+        "gen_perplexity": 356.0,
+        "judge_perplexity": 40.04951232727523,
+        "pct_unique_words": null,
+        "pct_valid_words": null,
+        "n_samples": 64,
+        "seed": 0
+      }
+    ]
+  }
+]
