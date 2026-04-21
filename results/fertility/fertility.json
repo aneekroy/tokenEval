@@ -1,0 +1,345 @@
+{
+  "byt5": {
+    "owt": {
+      "tokenizer_name": "byt5",
+      "corpus_name": "owt",
+      "vocab_size": 256,
+      "n_documents": 5000,
+      "n_words": 5075607,
+      "n_chars": 24818731,
+      "n_bytes": 25046470,
+      "n_tokens": 25046470,
+      "n_unk": 0,
+      "tokens_per_word_mean": 4.1026141306842705,
+      "tokens_per_word_median": 3,
+      "tokens_per_word_p95": 9.0,
+      "tokens_per_word_p99": 12.0,
+      "bytes_per_token": 1.0,
+      "chars_per_token": 0.9909073414337429,
+      "unk_rate": 0.0,
+      "examples": [
+        {
+          "word": "🙂",
+          "n_tokens": 4,
+          "pieces": [
+            "ð",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "word": "TensorFlow",
+          "n_tokens": 10,
+          "pieces": [
+            "T",
+            "e",
+            "n",
+            "s",
+            "o",
+            "r",
+            "F",
+            "l",
+            "o",
+            "w"
+          ]
+        },
+        {
+          "word": "北京",
+          "n_tokens": 6,
+          "pieces": [
+            "å",
+            "",
+            "",
+            "ä",
+            "º",
+            "¬"
+          ]
+        }
+      ]
+    },
+    "text8": {
+      "tokenizer_name": "byt5",
+      "corpus_name": "text8",
+      "vocab_size": 256,
+      "n_documents": 2000,
+      "n_words": 694449,
+      "n_chars": 4096000,
+      "n_bytes": 4096000,
+      "n_tokens": 4096000,
+      "n_unk": 0,
+      "tokens_per_word_mean": 4.900086255434164,
+      "tokens_per_word_median": 4,
+      "tokens_per_word_p95": 10.0,
+      "tokens_per_word_p99": 12.0,
+      "bytes_per_token": 1.0,
+      "chars_per_token": 1.0,
+      "unk_rate": 0.0,
+      "examples": []
+    }
+  },
+  "llama2": {
+    "owt": {
+      "tokenizer_name": "llama2",
+      "corpus_name": "owt",
+      "vocab_size": 32000,
+      "n_documents": 5000,
+      "n_words": 5075607,
+      "n_chars": 24818731,
+      "n_bytes": 25046470,
+      "n_tokens": 6437878,
+      "n_unk": 0,
+      "tokens_per_word_mean": 1.2435135344403143,
+      "tokens_per_word_median": 1,
+      "tokens_per_word_p95": 3.0,
+      "tokens_per_word_p99": 4.0,
+      "bytes_per_token": 3.8904853431518895,
+      "chars_per_token": 3.855110488269582,
+      "unk_rate": 0.0,
+      "examples": [
+        {
+          "word": "🙂",
+          "n_tokens": 5,
+          "pieces": [
+            "▁",
+            "<0xF0>",
+            "<0x9F>",
+            "<0x99>",
+            "<0x82>"
+          ]
+        },
+        {
+          "word": "TensorFlow",
+          "n_tokens": 3,
+          "pieces": [
+            "▁T",
+            "ensor",
+            "Flow"
+          ]
+        },
+        {
+          "word": "北京",
+          "n_tokens": 3,
+          "pieces": [
+            "▁",
+            "北",
+            "京"
+          ]
+        }
+      ]
+    },
+    "text8": {
+      "tokenizer_name": "llama2",
+      "corpus_name": "text8",
+      "vocab_size": 32000,
+      "n_documents": 2000,
+      "n_words": 694449,
+      "n_chars": 4096000,
+      "n_bytes": 4096000,
+      "n_tokens": 897128,
+      "n_unk": 0,
+      "tokens_per_word_mean": 1.291353288722426,
+      "tokens_per_word_median": 1,
+      "tokens_per_word_p95": 3.0,
+      "tokens_per_word_p99": 4.0,
+      "bytes_per_token": 4.5656807055403466,
+      "chars_per_token": 4.5656807055403466,
+      "unk_rate": 0.0,
+      "examples": []
+    }
+  },
+  "gpt2": {
+    "owt": {
+      "tokenizer_name": "gpt2",
+      "corpus_name": "owt",
+      "vocab_size": 50257,
+      "n_documents": 5000,
+      "n_words": 5075607,
+      "n_chars": 24818731,
+      "n_bytes": 25046470,
+      "n_tokens": 5678130,
+      "n_unk": 0,
+      "tokens_per_word_mean": 1.2782374600712783,
+      "tokens_per_word_median": 1,
+      "tokens_per_word_p95": 2.0,
+      "tokens_per_word_p99": 3.0,
+      "bytes_per_token": 4.411042015593162,
+      "chars_per_token": 4.370933916623959,
+      "unk_rate": 0.0,
+      "examples": [
+        {
+          "word": "🙂",
+          "n_tokens": 2,
+          "pieces": [
+            "ðŁ",
+            "ĻĤ"
+          ]
+        },
+        {
+          "word": "TensorFlow",
+          "n_tokens": 3,
+          "pieces": [
+            "T",
+            "ensor",
+            "Flow"
+          ]
+        },
+        {
+          "word": "北京",
+          "n_tokens": 4,
+          "pieces": [
+            "åĮ",
+            "Ĺ",
+            "äº",
+            "¬"
+          ]
+        }
+      ]
+    },
+    "text8": {
+      "tokenizer_name": "gpt2",
+      "corpus_name": "text8",
+      "vocab_size": 50257,
+      "n_documents": 2000,
+      "n_words": 694449,
+      "n_chars": 4096000,
+      "n_bytes": 4096000,
+      "n_tokens": 817290,
+      "n_unk": 0,
+      "tokens_per_word_mean": 1.3880385744669514,
+      "tokens_per_word_median": 1,
+      "tokens_per_word_p95": 3.0,
+      "tokens_per_word_p99": 4.0,
+      "bytes_per_token": 5.011684958827344,
+      "chars_per_token": 5.011684958827344,
+      "unk_rate": 0.0,
+      "examples": []
+    }
+  },
+  "qwen25": {
+    "owt": {
+      "tokenizer_name": "qwen25",
+      "corpus_name": "owt",
+      "vocab_size": 151643,
+      "n_documents": 5000,
+      "n_words": 5075607,
+      "n_chars": 24818731,
+      "n_bytes": 25046470,
+      "n_tokens": 5485456,
+      "n_unk": 0,
+      "tokens_per_word_mean": 1.2527063265536516,
+      "tokens_per_word_median": 1,
+      "tokens_per_word_p95": 2.0,
+      "tokens_per_word_p99": 3.0,
+      "bytes_per_token": 4.5659777418686796,
+      "chars_per_token": 4.524460865240738,
+      "unk_rate": 0.0,
+      "examples": [
+        {
+          "word": "🙂",
+          "n_tokens": 1,
+          "pieces": [
+            "ðŁĻĤ"
+          ]
+        },
+        {
+          "word": "TensorFlow",
+          "n_tokens": 2,
+          "pieces": [
+            "Tensor",
+            "Flow"
+          ]
+        },
+        {
+          "word": "北京",
+          "n_tokens": 1,
+          "pieces": [
+            "åĮĹäº¬"
+          ]
+        }
+      ]
+    },
+    "text8": {
+      "tokenizer_name": "qwen25",
+      "corpus_name": "text8",
+      "vocab_size": 151643,
+      "n_documents": 2000,
+      "n_words": 694449,
+      "n_chars": 4096000,
+      "n_bytes": 4096000,
+      "n_tokens": 796521,
+      "n_unk": 0,
+      "tokens_per_word_mean": 1.3378433837474026,
+      "tokens_per_word_median": 1,
+      "tokens_per_word_p95": 3.0,
+      "tokens_per_word_p99": 3.0,
+      "bytes_per_token": 5.142362850445877,
+      "chars_per_token": 5.142362850445877,
+      "unk_rate": 0.0,
+      "examples": []
+    }
+  },
+  "gemma3": {
+    "owt": {
+      "tokenizer_name": "gemma3",
+      "corpus_name": "owt",
+      "vocab_size": 262144,
+      "n_documents": 5000,
+      "n_words": 5075607,
+      "n_chars": 24818731,
+      "n_bytes": 25046470,
+      "n_tokens": 5555662,
+      "n_unk": 0,
+      "tokens_per_word_mean": 1.1650121847495285,
+      "tokens_per_word_median": 1,
+      "tokens_per_word_p95": 2.0,
+      "tokens_per_word_p99": 3.0,
+      "bytes_per_token": 4.508278221389278,
+      "chars_per_token": 4.467285986800493,
+      "unk_rate": 0.0,
+      "examples": [
+        {
+          "word": "🙂",
+          "n_tokens": 1,
+          "pieces": [
+            "🙂"
+          ]
+        },
+        {
+          "word": "TensorFlow",
+          "n_tokens": 2,
+          "pieces": [
+            "Tensor",
+            "Flow"
+          ]
+        },
+        {
+          "word": "北京",
+          "n_tokens": 1,
+          "pieces": [
+            "北京"
+          ]
+        }
+      ]
+    },
+    "text8": {
+      "tokenizer_name": "gemma3",
+      "corpus_name": "text8",
+      "vocab_size": 262144,
+      "n_documents": 2000,
+      "n_words": 694449,
+      "n_chars": 4096000,
+      "n_bytes": 4096000,
+      "n_tokens": 763505,
+      "n_unk": 0,
+      "tokens_per_word_mean": 1.213281320874535,
+      "tokens_per_word_median": 1,
+      "tokens_per_word_p95": 2.0,
+      "tokens_per_word_p99": 3.0,
+      "bytes_per_token": 5.364732385511555,
+      "chars_per_token": 5.364732385511555,
+      "unk_rate": 0.0,
+      "examples": []
+    }
+  }
+}
