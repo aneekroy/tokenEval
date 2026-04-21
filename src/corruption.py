@@ -20,12 +20,19 @@ to MC with a large sample count.
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Sequence
 
 import numpy as np
 import torch
 from scipy import integrate, stats
+
+
+# Above this |V|, analytical quadrature for ρ is known to be unreliable — the
+# integrand becomes a very thin spike that quad's adaptive strategy can miss.
+# We warn in that regime and recommend MC.
+_RHO_QUADRATURE_V_LIMIT = 100_000
 
 
 # ---------------------------------------------------------------------------
@@ -47,10 +54,24 @@ def rho_analytical(sigma: float, vocab_size: int, use_log: bool = True) -> float
 
     For large V and moderate σ, Φ(s/σ)^(V-1) is 0 for most s and 1 for a thin
     band. We integrate in log space over that band for numerical stability.
+
+    ⚠️ At |V| > ~10⁵ the integrand is a very thin spike and quad can miss the
+    band between ~σ·Φ⁻¹(1/V) and ~σ+∞. A warning is emitted in that regime;
+    prefer `estimate_corruption_mc` for reliable values there.
     """
     V = int(vocab_size)
     if V < 2:
         return 0.0
+
+    if V > _RHO_QUADRATURE_V_LIMIT:
+        warnings.warn(
+            f"rho_analytical(σ={sigma}, |V|={V}): quadrature may be unreliable "
+            f"at |V| > {_RHO_QUADRATURE_V_LIMIT:,} because the integrand is a "
+            f"very thin spike. Use estimate_corruption_mc for large-vocab cases.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
     V_minus_1 = V - 1
 
     if use_log:
@@ -158,7 +179,11 @@ def estimate_corruption_mc(
 
     # Analytical references (r is exact; rho may fail at very large V in quadrature)
     try:
-        rho_th = rho_analytical(sigma, V)
+        # Suppress the high-V warning here; the whole point of calling this is
+        # that we have the MC value to fall back on.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            rho_th = rho_analytical(sigma, V)
     except Exception:
         rho_th = float("nan")
     r_th = float(r_analytical(sigma))

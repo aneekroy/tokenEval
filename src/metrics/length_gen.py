@@ -78,7 +78,7 @@ def length_generalization(
                 seed=seed,
             )
             ppl = judge.perplexity_from_token_ids(
-                seqs, source_tokenizer_name=sampler.config.tokenizer_name
+                seqs, source_tokenizer=sampler.tokenizer,
             )
             ppl_by_tau[L][tau] = ppl
             print(f"  L={L}  τ={tau:.3f}  judge_ppl={ppl:.2f}")

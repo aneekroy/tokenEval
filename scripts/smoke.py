@@ -79,8 +79,8 @@ def _run(name: str, fn) -> None:
 
 
 # -- Tokenizer registry sanity
-def test_registry_has_five_tokenizers():
-    expected = {"byt5", "llama2", "gpt2", "qwen25", "gemma3"}
+def test_registry_has_expected_tokenizers():
+    expected = {"byt5", "llama2", "gpt2", "qwen25", "gemma3", "llada"}
     assert expected.issubset(TOKENIZER_REGISTRY.keys()), \
         f"registry missing entries: {expected - TOKENIZER_REGISTRY.keys()}"
 
@@ -98,6 +98,7 @@ def test_gpt2_loads_and_encodes():
 def test_fertility_gpt2_english():
     tok = load_tokenizer("gpt2")
     stats = compute_fertility(tok, TINY_ENGLISH, "gpt2", "tiny_english")
+    assert not stats.is_empty
     assert stats.n_documents == len(TINY_ENGLISH)
     assert stats.n_tokens > 0
     # GPT-2 English fertility should be roughly 1.2–1.4 tokens/word
@@ -114,6 +115,16 @@ def test_fertility_byt5_english_is_high():
     # ByT5 is byte-level; English words are ~5 bytes → fertility ~5
     assert stats.tokens_per_word_mean > 3.0, \
         f"ByT5 fertility suspiciously low: {stats.tokens_per_word_mean}"
+
+
+def test_fertility_empty_corpus_returns_stats():
+    """Regression for the previous behavior of raising on empty corpora,
+    which killed the whole tokenizer × corpus grid in run_fertility_suite."""
+    tok = load_tokenizer("gpt2")
+    stats = compute_fertility(tok, [], "gpt2", "empty_corpus")
+    assert stats.is_empty
+    assert stats.n_documents == 0
+    assert stats.tokens_per_word_mean == 0.0
 
 
 # -- ρ(σ) and r(σ) against CANDI paper values at |V|=50
@@ -136,9 +147,10 @@ def test_rho_analytical_monotone_in_V():
 
 
 def test_mc_estimator_agrees_with_theory():
-    # |V|=50 is well within quadrature's stability range
+    # |V|=50 is well within quadrature's stability range.
+    # Explicit seed=0 so this doesn't flake if the default ever changes.
     est = estimate_corruption_mc(
-        sigma=1.0, vocab_size=50, n_samples=5000, device="cpu",
+        sigma=1.0, vocab_size=50, n_samples=5000, device="cpu", seed=0,
     )
     assert abs(est.rho_mc - est.rho_theory) < 0.03, \
         f"ρ MC={est.rho_mc:.3f} vs theory={est.rho_theory:.3f}"
@@ -150,13 +162,13 @@ def test_mc_estimator_agrees_with_theory():
 def test_sample_entropy_uniform_is_log_V():
     # Uniform over 10 symbols → entropy = log(10) ≈ 2.303 nats
     seqs = [list(range(10)) * 100]
-    H = _sample_entropy(seqs, vocab_size=10)
+    H = _sample_entropy(seqs)
     assert abs(H - math.log(10)) < 0.01, f"H={H} not close to log(10)={math.log(10):.3f}"
 
 
 def test_sample_entropy_degenerate_is_zero():
     seqs = [[7] * 1000]
-    H = _sample_entropy(seqs, vocab_size=10)
+    H = _sample_entropy(seqs)
     assert H < 1e-6
 
 
@@ -199,12 +211,13 @@ def main() -> int:
     print("=== diffusion_tokenizer_bench smoke test ===\n")
 
     print("[1] Tokenizer registry & loading")
-    _run("registry has 5 tokenizers", test_registry_has_five_tokenizers)
+    _run("registry has expected tokenizers", test_registry_has_expected_tokenizers)
     _run("gpt2 loads and encodes", test_gpt2_loads_and_encodes)
 
     print("\n[2] Fertility")
     _run("gpt2 English fertility in sane range", test_fertility_gpt2_english)
     _run("byt5 English fertility > gpt2", test_fertility_byt5_english_is_high)
+    _run("empty corpus returns stats (no raise)", test_fertility_empty_corpus_returns_stats)
 
     print("\n[3] Corruption estimators")
     _run("r analytical matches paper", test_r_analytical_matches_paper)

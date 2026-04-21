@@ -8,6 +8,16 @@ Three metrics implemented:
     - frontier.entropy_perplexity(...)   : OWT-scale, sweeps τ, returns full curve
     - frontier.text8_word_frontier(...)  : Text8-scale, %unique vs %valid
     - frontier.judge_perplexity(...)     : fixed judge LM for cross-tokenizer comparability
+
+Headline vs. diagnostic:
+    - `judge_perplexity` is the correct headline for cross-method / cross-tokenizer
+      comparisons — it applies a single fixed LM to all generations after
+      decode+re-encode.
+    - `gen_perplexity` (generative perplexity under the model's own tokenizer)
+      is DIAGNOSTIC ONLY. See _internal_perplexity's docstring for the caveat —
+      in short, for MDLM-style absorbing diffusion evaluated at t=0 with no
+      mask, the training loss was zero at every position, so the logits are
+      not well-calibrated for this quantity.
 """
 from __future__ import annotations
 
@@ -17,12 +27,11 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, Optional, Sequence
 
-import numpy as np
 import torch
 import torch.nn.functional as F
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
 
 from ..samplers import DiffusionSampler
 
@@ -36,12 +45,12 @@ class FrontierPoint:
     nfe: int
     temperature: float
     # OWT-style metrics
-    entropy: float | None = None
-    gen_perplexity: float | None = None     # under the diffusion model's own tokenizer
-    judge_perplexity: float | None = None   # under the fixed judge LM
+    entropy: Optional[float] = None
+    gen_perplexity: Optional[float] = None     # under the diffusion model's own tokenizer
+    judge_perplexity: Optional[float] = None   # under the fixed judge LM
     # Text8-style metrics
-    pct_unique_words: float | None = None
-    pct_valid_words: float | None = None
+    pct_unique_words: Optional[float] = None
+    pct_valid_words: Optional[float] = None
     # Meta
     n_samples: int = 0
     seed: int = 0
@@ -56,25 +65,24 @@ class FrontierCurve:
     points: list[FrontierPoint] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return {
-            "method": self.method,
-            "nfe": self.nfe,
-            "tokenizer_name": self.tokenizer_name,
-            "corpus": self.corpus,
-            "points": [asdict(p) for p in self.points],
-        }
+        # asdict recursively handles nested FrontierPoint dataclasses, so this
+        # stays in sync automatically when fields are added.
+        return asdict(self)
 
 
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
-def _sample_entropy(sequences: Sequence[Sequence[int]], vocab_size: int) -> float:
+def _sample_entropy(sequences: Sequence[Sequence[int]]) -> float:
     """
     Sample entropy (in nats) over the concatenated generation:
         H = -Σ p_i log p_i
     where p_i is the empirical frequency of token i across all generated sequences.
 
-    This is the "entropy" on the x-axis of CANDI's frontier plots.
+    This is the "entropy" on the x-axis of CANDI's frontier plots. Uses the
+    empirical distribution over observed tokens only (no smoothing, no |V|
+    normalization) — the headline entropy number is the same whether or not
+    you include zero-count support, because 0 · log 0 = 0 in the limit.
     """
     counts = Counter()
     total = 0
@@ -96,20 +104,32 @@ def _internal_perplexity(
     max_seqs: int = 128,
 ) -> float:
     """
-    "Generative perplexity" under the diffusion model's OWN score. This is what
-    CANDI Figures 5 and 7 report. Caveat: comparing across different tokenizers
-    is meaningless (different support, different normalizer). Use
-    judge_perplexity for cross-tokenizer comparisons.
+    "Generative perplexity" under the diffusion model's OWN score.
 
-    We estimate log p(x_0) under the model at t=0 (no noise), averaged over
-    positions. For masked diffusion this is the per-token cross-entropy of the
-    model's predictions against the clean sequence.
+    ⚠️ DIAGNOSTIC ONLY. Not suitable as a headline metric:
+      1. Cross-tokenizer: meaningless (different support, different normalizer).
+         Use judge_perplexity for cross-tokenizer comparisons.
+      2. Cross-method at fixed tokenizer: still fraught. For MDLM-style
+         absorbing diffusion, the training loss is only active at masked
+         positions; evaluated here at noise_level=0.0 with no mask, every
+         position had zero training signal, so the logits are not well-defined
+         for this query. Some variants incidentally learn identity-on-clean
+         (via the ELBO at small t) but it's not a property we should rely on.
+      3. Semantics differ from the CANDI paper's "generative perplexity,"
+         which is score-function-based. Matching their protocol exactly
+         requires wiring through each method's native density.
+
+    Bottom line: `judge_perplexity` is the headline; this is kept as a sanity
+    check only.
+
+    Returns exp of mean NLL of the (clean) sequences under the model at t=0.
     """
     if len(sequences) == 0:
         return float("nan")
     seqs = sequences[:max_seqs]
     x = torch.tensor(seqs, dtype=torch.long)
-    # noise_level=0.0 meaning "no corruption"; logits_at returns model logits at clean input
+    # noise_level=0.0 = "no corruption"; MDLM/LLaDA adapters ignore this, but
+    # SEDD/CANDI must honor it (see samplers.py contract).
     logits = sampler.logits_at(x, noise_level=0.0, mask=None)
     log_probs = F.log_softmax(logits, dim=-1)
     nll = -log_probs.gather(-1, x.to(logits.device).unsqueeze(-1)).squeeze(-1)
@@ -151,7 +171,7 @@ def entropy_perplexity_frontier(
                 temperature=tau,
                 seed=seed,
             )
-            H = _sample_entropy(seqs, vocab_size=0)  # vocab_size unused for empirical H
+            H = _sample_entropy(seqs)
             try:
                 gen_ppl = _internal_perplexity(sampler, seqs)
             except Exception as e:
@@ -161,7 +181,7 @@ def entropy_perplexity_frontier(
             if judge_sampler is not None:
                 judge_ppl = judge_sampler.perplexity_from_token_ids(
                     seqs,
-                    source_tokenizer_name=sampler.config.tokenizer_name,
+                    source_tokenizer=sampler.tokenizer,
                 )
             curve.points.append(FrontierPoint(
                 method=sampler.config.model_name,
@@ -237,10 +257,10 @@ def text8_word_frontier(
     sampler: DiffusionSampler,
     nfe_values: Sequence[int],
     temperatures: Sequence[float],
+    source_tokenizer: PreTrainedTokenizerBase,
     seq_length: int = 1024,
     n_sequences: int = 64,
     seed: int = 0,
-    tokenizer_name: str = "byt5",        # Text8 is char-level; ByT5 is a decent proxy
 ) -> list[FrontierCurve]:
     """
     Text8-scale metrics: %unique words, %valid words.
@@ -249,9 +269,13 @@ def text8_word_frontier(
     to a string, lowercased, and split into words on whitespace. Unique = fraction
     of distinct word types among all tokens; Valid = fraction in an English
     dictionary.
+
+    `source_tokenizer` is required and must be the tokenizer that produced the
+    ids the sampler generates (ordinarily `sampler.tokenizer`). We don't default
+    it, because decoding with the wrong tokenizer silently produces garbage
+    without any error — catching that mistake at the call site is worth the
+    extra parameter.
     """
-    from ..tokenizers_bench import load_tokenizer
-    tok = load_tokenizer(tokenizer_name)
     validator = EnglishWordValidator()
 
     curves: list[FrontierCurve] = []
@@ -259,7 +283,7 @@ def text8_word_frontier(
         curve = FrontierCurve(
             method=sampler.config.model_name,
             nfe=nfe,
-            tokenizer_name=tokenizer_name,
+            tokenizer_name=sampler.config.tokenizer_name,
             corpus="text8",
         )
         for tau in temperatures:
@@ -272,7 +296,7 @@ def text8_word_frontier(
             )
             all_words: list[str] = []
             for ids in seqs:
-                text = tok.decode(ids, skip_special_tokens=True).lower()
+                text = source_tokenizer.decode(ids, skip_special_tokens=True).lower()
                 all_words.extend(_WORD_RE.findall(text))
             if not all_words:
                 pct_unique = 0.0
@@ -332,20 +356,23 @@ class JudgePerplexity:
     def perplexity_from_token_ids(
         self,
         sequences: Sequence[Sequence[int]],
-        source_tokenizer_name: str,
+        source_tokenizer: PreTrainedTokenizerBase,
     ) -> float:
         """
         Decode source token ids → text → encode with judge → compute judge PPL.
 
         Returns the exponentiated mean NLL in nats, following the convention used
         by the diffusion-LM literature (Sahoo et al. 2024).
+
+        `source_tokenizer` is the tokenizer that produced `sequences` — pass
+        `sampler.tokenizer` directly rather than looking up by name, because
+        the name→tokenizer registry and the sampler's actual tokenizer can
+        diverge (e.g. LLaDA's 126K-vocab tokenizer vs. a "llama2" config).
         """
-        from ..tokenizers_bench import load_tokenizer
-        src_tok = load_tokenizer(source_tokenizer_name)
         total_nll = 0.0
         total_toks = 0
         for ids in sequences:
-            text = src_tok.decode(ids, skip_special_tokens=True)
+            text = source_tokenizer.decode(ids, skip_special_tokens=True)
             enc = self.tok(
                 text, return_tensors="pt",
                 truncation=True, max_length=self.max_length,

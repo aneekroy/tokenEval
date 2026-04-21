@@ -72,20 +72,37 @@ def cmd_fertility(cfg: dict) -> None:
     corpora = {}
     data_cfg = cfg.get("data", {})
     if data_cfg.get("owt", {}).get("enabled", True):
-        corpora["owt"] = list(owt_factory(
+        docs = list(owt_factory(
             n_docs=data_cfg["owt"].get("n_docs", 2000),
             hf_cache=data_cfg.get("hf_cache"),
+            keep_fraction=data_cfg["owt"].get("keep_fraction", 1.0),
         )())
+        if docs:
+            corpora["owt"] = docs
+        else:
+            print("[warn] OWT returned 0 docs; skipping from fertility suite")
     if data_cfg.get("text8", {}).get("enabled", True):
-        corpora["text8"] = list(text8_factory(
+        docs = list(text8_factory(
             path=data_cfg["text8"].get("path"),
             n_docs=data_cfg["text8"].get("n_docs", 2000),
         )())
+        if docs:
+            corpora["text8"] = docs
+        else:
+            print("[warn] Text8 returned 0 docs; skipping from fertility suite")
     if data_cfg.get("hindi", {}).get("enabled", False):
-        corpora["hindi"] = list(sangraha_hindi_factory(
+        docs = list(sangraha_hindi_factory(
             n_docs=data_cfg["hindi"].get("n_docs", 1000),
             hf_cache=data_cfg.get("hf_cache"),
         )())
+        if docs:
+            corpora["hindi"] = docs
+        else:
+            print("[warn] Sangraha Hindi returned 0 docs; skipping from fertility suite")
+
+    if not corpora:
+        print("[error] no corpora available; nothing to do")
+        return
 
     results = run_fertility_suite(
         corpora=corpora,
@@ -183,10 +200,10 @@ def cmd_frontier(cfg: dict) -> None:
                 sampler,
                 nfe_values=fc["text8"]["nfe_values"],
                 temperatures=fc["text8"]["temperatures"],
+                source_tokenizer=sampler.tokenizer,
                 seq_length=fc["text8"].get("seq_length", 1024),
                 n_sequences=fc["text8"].get("n_sequences", 64),
                 seed=fc.get("seed", 0),
-                tokenizer_name=model_spec["tokenizer"],
             )
             save_curves(
                 curves,

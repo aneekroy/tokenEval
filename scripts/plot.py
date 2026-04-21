@@ -51,6 +51,23 @@ def _ensure_fig_dir(out_dir: Path) -> Path:
     return fig_dir
 
 
+def _as_layer_head_matrix(per_layer_per_head: list | np.ndarray) -> np.ndarray:
+    """
+    Coerce attention-diffuseness output to a 2-D [L, H] numpy array with an
+    explicit shape assertion. `attention_diffuseness` returns a list-of-lists
+    [L][H], but a future refactor that returns a pre-stacked tensor could
+    silently be shaped [H, L] instead — this helper surfaces that if it ever
+    happens.
+    """
+    arr = np.asarray(per_layer_per_head)
+    if arr.ndim != 2:
+        raise ValueError(
+            f"Expected a 2-D [layers, heads] matrix for attention diffuseness; "
+            f"got shape {arr.shape}. Check AttentionDiffuseness.per_layer_per_head."
+        )
+    return arr
+
+
 # ---------------------------------------------------------------------------
 # Frontier: entropy-perplexity (OWT)
 # ---------------------------------------------------------------------------
@@ -350,11 +367,11 @@ def plot_attention(out_dir: Path) -> None:
     for path in files:
         data = json.loads(path.read_text())
         method = data["method"]
-        per_head = np.array(data["per_layer_per_head"])   # [L, H]
+        per_head = _as_layer_head_matrix(data["per_layer_per_head"])  # [L, H]
         H_max = data["max_entropy"]
         fig, ax = plt.subplots(figsize=(6, 4))
         im = ax.imshow(
-            per_head.T / H_max, aspect="auto",
+            per_head.T / H_max, aspect="auto",        # transpose → [H, L]
             cmap="magma", vmin=0, vmax=1,
             origin="lower",
         )
