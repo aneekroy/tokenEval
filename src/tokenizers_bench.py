@@ -21,17 +21,12 @@ from pathlib import Path
 from typing import Iterable
 
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from tqdm import tqdm
 
 
 # ---------------------------------------------------------------------------
 # Tokenizer registry
 # ---------------------------------------------------------------------------
-# Each entry: (display_name, HF repo or local path, vocab_size_expected, notes).
-# vocab_size_expected is used for sanity checks only; the actual size is read from
-# the loaded tokenizer.
-#
-# Llama-2 is gated on HF. If `meta-llama/Llama-2-7b-hf` fails auth, the mirror
-# `NousResearch/Llama-2-7b-hf` is identical in tokenizer and ungated.
 TOKENIZER_REGISTRY: dict[str, dict] = {
     "byt5": {
         "hf_id": "google/byt5-small",
@@ -103,11 +98,6 @@ class FertilityStats:
 # ---------------------------------------------------------------------------
 # Word splitter
 # ---------------------------------------------------------------------------
-# Whitespace + treat punctuation as separate words, so "hello," -> ["hello", ","].
-# This is deliberately simple and language-agnostic. For Devanagari it works
-# because Hindi uses ASCII spaces between words. For CJK it would break and we
-# would need a language-specific segmenter (e.g. jieba); we report bytes/token
-# for those cases instead.
 _WORD_RE = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 
 
@@ -126,14 +116,12 @@ def load_tokenizer(name: str, hf_token: str | None = None) -> PreTrainedTokenize
             f"Known: {sorted(TOKENIZER_REGISTRY)}"
         )
     hf_id = TOKENIZER_REGISTRY[name]["hf_id"]
-    # use_fast=True is important — Rust tokenizers are 10-100x faster here
     tok = AutoTokenizer.from_pretrained(
         hf_id,
         use_fast=True,
         token=hf_token,
         trust_remote_code=True,
     )
-    # Sanity check
     expected = TOKENIZER_REGISTRY[name]["expected_vocab"]
     if abs(tok.vocab_size - expected) > 2000:
         print(
@@ -155,78 +143,67 @@ def compute_fertility(
 ) -> FertilityStats:
     """
     Compute fertility statistics for one (tokenizer, corpus) pair.
-
-    We iterate once through the corpus, tokenizing document-by-document and
-    accumulating statistics. We collect a small number of (word, token_ids)
-    examples for qualitative inspection of segmentation quality.
+    Optimized to use Hugging Face's Rust-based batching with tqdm progress.
     """
-    per_word_counts: list[int] = []
-    n_tokens = 0
-    n_words = 0
-    n_chars = 0
-    n_bytes = 0
-    n_unk = 0
-    n_documents = 0
+    # Materialize documents
+    docs_list = [d for d in documents if d]
+    n_documents = len(docs_list)
+    
+    if n_documents == 0:
+        raise ValueError(f"No documents found in corpus {corpus_name}")
+
+    n_chars = sum(len(d) for d in docs_list)
+    n_bytes = sum(len(d.encode("utf-8", errors="replace")) for d in docs_list)
+    
+    # 1. Fast Batch Encoding for Document-Level Stats
+    doc_encodings = []
+    DOC_CHUNK = 2000
+    for start in tqdm(range(0, n_documents, DOC_CHUNK), desc=f"[{tokenizer_name}] Encoding docs", leave=False):
+        chunk = docs_list[start:start+DOC_CHUNK]
+        doc_encodings.extend(tokenizer(chunk, add_special_tokens=False)["input_ids"])
+        
+    n_tokens = sum(len(ids) for ids in doc_encodings)
+    
     unk_id = tokenizer.unk_token_id
+    n_unk = 0
+    if unk_id is not None:
+        n_unk = sum(ids.count(unk_id) for ids in doc_encodings)
 
+    # 2. Extract all words
+    all_words = []
+    for doc in tqdm(docs_list, desc=f"[{tokenizer_name}] Extracting words", leave=False):
+        all_words.extend(split_words(doc))
+    
+    n_words = len(all_words)
+    per_word_counts = []
+
+    # 3. Fast Batch Encoding for Word-Level Stats
+    CHUNK_SIZE = 100_000 
+    for start in tqdm(range(0, n_words, CHUNK_SIZE), desc=f"[{tokenizer_name}] Encoding words", leave=False):
+        chunk = all_words[start:start + CHUNK_SIZE]
+        word_encodings = tokenizer(chunk, add_special_tokens=False)["input_ids"]
+        per_word_counts.extend(len(x) for x in word_encodings)
+
+    # 4. Grab Segmentation Examples
     examples: list[dict] = []
-
-    # Words kept for segmentation examples — chosen to stress the tokenizer
-    # with multi-morpheme English, CJK-adjacent Latin, and Devanagari.
     interesting_words = {
-        "antidisestablishmentarianism",
-        "hyperparameter",
-        "TensorFlow",
-        "सूर्यमंदिर",          # sun temple (Hindi, long compound)
-        "नमस्कार",             # greeting
-        "tokenization",
-        "München",
-        "北京",                # Beijing (CJK)
-        "🙂",                  # emoji
+        "antidisestablishmentarianism", "hyperparameter", "TensorFlow",
+        "सूर्यमंदिर", "नमस्कार", "tokenization", "München", "北京", "🙂",
     }
     interesting_seen: set[str] = set()
-
-    for doc in documents:
-        if not doc:
-            continue
-        n_documents += 1
-        n_chars += len(doc)
-        n_bytes += len(doc.encode("utf-8", errors="replace"))
-        words = split_words(doc)
-        n_words += len(words)
-
-        # Tokenize the whole doc once for top-line counts
-        ids = tokenizer.encode(doc, add_special_tokens=False)
-        n_tokens += len(ids)
-        if unk_id is not None:
-            n_unk += sum(1 for i in ids if i == unk_id)
-
-        # For per-word fertility we need word-level tokenization.
-        # Batch the words in chunks of 4K to amortize tokenizer overhead.
-        CHUNK = 4096
-        for start in range(0, len(words), CHUNK):
-            chunk = words[start:start + CHUNK]
-            # encode_batch is faster but not uniformly available; use __call__
-            enc = tokenizer(chunk, add_special_tokens=False)["input_ids"]
-            per_word_counts.extend(len(x) for x in enc)
-
-        # Grab a few segmentation examples
-        if len(examples) < n_examples_to_keep:
-            for w in words[:200]:
-                if w in interesting_words and w not in interesting_seen:
-                    ids_w = tokenizer.encode(w, add_special_tokens=False)
-                    pieces = tokenizer.convert_ids_to_tokens(ids_w)
-                    examples.append({
-                        "word": w,
-                        "n_tokens": len(ids_w),
-                        "pieces": pieces,
-                    })
-                    interesting_seen.add(w)
-                    if len(examples) >= n_examples_to_keep:
-                        break
-
-    if not per_word_counts:
-        raise ValueError(f"No words found in corpus {corpus_name}")
+    
+    for w in all_words:
+        if len(examples) >= n_examples_to_keep:
+            break
+        if w in interesting_words and w not in interesting_seen:
+            ids_w = tokenizer.encode(w, add_special_tokens=False)
+            pieces = tokenizer.convert_ids_to_tokens(ids_w)
+            examples.append({
+                "word": w,
+                "n_tokens": len(ids_w),
+                "pieces": pieces,
+            })
+            interesting_seen.add(w)
 
     stats = FertilityStats(
         tokenizer_name=tokenizer_name,
@@ -269,10 +246,6 @@ def run_fertility_suite(
 ) -> dict[str, dict[str, FertilityStats]]:
     """
     Run the full (tokenizer × corpus) grid and dump JSON + human-readable report.
-
-    `corpora` is a dict mapping corpus_name -> iterable of document strings.
-    Iterables are consumed multiple times, so pass lists or re-createable
-    generators (see data.py for factories).
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -288,7 +261,6 @@ def run_fertility_suite(
         results[tok_name] = {}
         for corpus_name, docs in corpora.items():
             print(f"  Corpus {corpus_name} ...", flush=True)
-            # If docs is a list it can be reused; otherwise callers must re-create.
             stats = compute_fertility(tok, docs, tok_name, corpus_name)
             results[tok_name][corpus_name] = stats
             print(

@@ -171,40 +171,47 @@ class LLaDASampler(DiffusionSampler):
 # ===========================================================================
 # SEDD adapter
 # ===========================================================================
+import sys
+import os
+import torch
+import torch.nn.functional as F
+from typing import Optional
+
 class SEDDSampler(DiffusionSampler):
     """
-    SEDD (Lou et al. 2024) uses a custom repo layout (louaaron/Score-Entropy-
-    Discrete-Diffusion) with `Graph`, `Noise`, and `model.SEDD` abstractions
-    not expressible as HF AutoModel.
-
-    INTEGRATION POINT: paste in the SEDD `sampling.get_pc_sampler` call from
-    your existing eval pipeline. The commented skeleton below matches the
-    upstream API.
+    SEDD (Lou et al. 2024) adapter utilizing the louaaron/Score-Entropy-Discrete-Diffusion repo.
     """
 
     def __init__(self, config: SamplerConfig) -> None:
         super().__init__(config)
-        # TODO: INTEGRATE SEDD. Example:
-        #
-        # from sedd_repo import model as sedd_model, graph_lib, noise_lib, sampling
-        # self.net = sedd_model.SEDD.from_pretrained(config.checkpoint_path).to(self.device)
-        # self.graph = graph_lib.get_graph(self.cfg)   # "absorb" or "uniform"
-        # self.noise = noise_lib.get_noise(self.cfg)
-        #
-        # self._sampling_fn = lambda batch_size, steps, temp: sampling.get_pc_sampler(
-        #     graph=self.graph, noise=self.noise, batch_dims=(batch_size, seq_length),
-        #     predictor="analytic", steps=steps, denoise=True,
-        # )(self.net)
-        self._initialized = False
+        
+        # Dynamically add the SEDD repo path to sys.path
+        sedd_repo_path = "/home/aneek/src/dLLM-eval/aneek/Score-Entropy-Discrete-Diffusion"
+        if sedd_repo_path not in sys.path:
+            sys.path.insert(0, sedd_repo_path)
+            
+        try:
+            from model import SEDD
+            from graph_lib import get_graph
+            from noise_lib import get_noise
+            from sampling import get_pc_sampler
+        except ImportError as e:
+            raise RuntimeError(
+                f"Could not import SEDD modules from {sedd_repo_path}. "
+                "Ensure the path is correct and contains the required python files."
+            ) from e
 
-    def _require_init(self) -> None:
-        if not self._initialized:
-            raise NotImplementedError(
-                "SEDDSampler: paste your SEDD loading code into "
-                "src/samplers.py::SEDDSampler.__init__. See TODO marker. "
-                "The interface contract is: self._sampling_fn(batch_size, steps, "
-                "temperature) -> LongTensor[batch, seq_length]."
-            )
+        print(f"[sampler] loading SEDD model from {config.checkpoint_path}")
+        # Load the SEDD model from the local checkpoint
+        self.net = SEDD.from_pretrained(config.checkpoint_path).to(self.device).eval()
+        
+        # Extract graph and noise configurations from the loaded model
+        self.cfg = self.net.config
+        self.graph = get_graph(self.cfg)
+        self.noise = get_noise(self.cfg)
+        self.get_pc_sampler = get_pc_sampler
+        
+        self._initialized = True
 
     @torch.no_grad()
     def sample(
@@ -215,9 +222,20 @@ class SEDDSampler(DiffusionSampler):
         temperature: float = 1.0,
         seed: int = 0,
     ) -> list[list[int]]:
-        self._require_init()
         torch.manual_seed(seed)
-        out = self._sampling_fn(n_sequences, nfe, temperature)  # type: ignore
+        
+        # Instantiate the sampler function for the requested batch size and NFE
+        sampling_fn = self.get_pc_sampler(
+            graph=self.graph,
+            noise=self.noise,
+            batch_dims=(n_sequences, seq_length),
+            predictor="analytic",
+            steps=nfe,
+            denoise=True,
+        )
+        
+        # Execute the reverse diffusion process
+        out = sampling_fn(self.net)
         return out.cpu().tolist()
 
     @torch.no_grad()
@@ -227,11 +245,10 @@ class SEDDSampler(DiffusionSampler):
         noise_level: float,
         mask: Optional[torch.BoolTensor] = None,
     ) -> torch.Tensor:
-        self._require_init()
-        # SEDD's score network returns scores, not logits directly. Convert via
-        # the graph's reverse-rate formulation. TODO: wire up.
-        raise NotImplementedError("SEDD logits_at: use graph.reverse_rate helpers.")
-
+        # SEDD models predict scores, not standard HF causal logits.
+        # Translating SEDD scores to raw logits requires reverse-rate conversions 
+        # from the graph library. 
+        raise NotImplementedError("SEDD logits_at requires graph reverse-rate implementation for diagnostic entropy.")
 
 # ===========================================================================
 # CANDI adapter
